@@ -34,6 +34,17 @@ export default defineConfig({
         maximumFileSizeToCacheInBytes: 7 * 1024 * 1024,
         runtimeCaching: [
           {
+            urlPattern: /\/wasm\/.*\.wasm$/,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'onnx-wasm',
+              expiration: {
+                maxEntries: 5,
+                maxAgeSeconds: 365 * 24 * 60 * 60,
+              },
+            },
+          },
+          {
             urlPattern: /^https:\/\/huggingface\.co\/.*$/,
             handler: 'CacheFirst',
             options: {

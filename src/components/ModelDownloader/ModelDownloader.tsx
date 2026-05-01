@@ -56,10 +56,13 @@ export default function ModelDownloader() {
           <span style={styles.status}>
             {whisper.error || downloadError ? (
               <span style={styles.errorText}>
-                ❌ Download failed. Check your internet connection.
+                ❌ {whisper.error || downloadError}
               </span>
             ) : whisper.isLoading ? (
-              `Downloading... ${dl.whisperProgress}%`
+              <>
+                <span>{whisper.statusText}</span>
+                <span style={{ marginLeft: '4px' }}>{dl.whisperProgress}%</span>
+              </>
             ) : dl.whisperReady ? (
               '✅ Ready'
             ) : (

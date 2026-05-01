@@ -1,6 +1,8 @@
 import { useRef, useState, useCallback } from 'react'
-import { pipeline, type Pipeline } from '@xenova/transformers'
+import { pipeline, env, type Pipeline } from '@xenova/transformers'
 import { WHISPER_MODEL } from '../utils/constants'
+
+env.backends.onnx.wasm.wasmPaths = '/wasm/'
 
 let globalPipeRef: Pipeline | null = null
 let globalListeners: Array<(ready: boolean) => void> = []
@@ -13,8 +15,8 @@ function safeProgress(raw: unknown): number {
   if (raw == null) return 0
   const num = Number(raw)
   if (!isFinite(num) || num <= 0) return 0
-  if (num > 1) return Math.min(100, Math.round(num))
-  return Math.min(100, Math.round(num * 100))
+  if (num <= 1) return Math.min(100, Math.round(num * 100))
+  return Math.min(100, Math.round(num))
 }
 
 export function useWhisper() {
@@ -22,6 +24,7 @@ export function useWhisper() {
   const [isReady, setIsReady] = useState(globalPipeRef !== null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [statusText, setStatusText] = useState('')
 
   const load = useCallback(async (onProgress?: (p: number) => void) => {
     if (globalPipeRef) {
@@ -32,15 +35,17 @@ export function useWhisper() {
     if (pipeRef.current) return
     setIsLoading(true)
     setError(null)
+    setStatusText('Starting download...')
 
     const timeout = setTimeout(() => {
       if (!globalPipeRef) {
-        setError('Download timed out. Check your internet connection and try again.')
+        setError('Download timed out (5 min). Your browser may have blocked the download. Try using a different browser or disabling ad blockers.')
         setIsLoading(false)
       }
-    }, 120000)
+    }, 300000)
 
     try {
+      setStatusText('Downloading model files from Hugging Face...')
       globalPipeRef = await pipeline('automatic-speech-recognition', WHISPER_MODEL, {
         progress_callback: (progress: Record<string, unknown>) => {
           if (onProgress && progress != null) {
@@ -49,13 +54,17 @@ export function useWhisper() {
         },
       })
       clearTimeout(timeout)
+      setStatusText('Initializing speech recognition engine...')
       pipeRef.current = globalPipeRef
       setIsReady(true)
       notifyListeners(true)
+      setStatusText('Ready')
     } catch (e) {
       clearTimeout(timeout)
       const msg = String(e)
       setError(msg)
+      setStatusText('')
+      throw e
     } finally {
       setIsLoading(false)
     }
@@ -92,5 +101,5 @@ export function useWhisper() {
     notifyListeners(false)
   }, [])
 
-  return { load, transcribe, transcribeWithTimestamps, unload, isReady, isLoading, error }
+  return { load, transcribe, transcribeWithTimestamps, unload, isReady, isLoading, error, statusText }
 }
