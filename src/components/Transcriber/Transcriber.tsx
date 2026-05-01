@@ -16,11 +16,18 @@ export default function Transcriber() {
   const [transcript, setTranscript] = useState('')
   const [segments, setSegments] = useState<{ start: number; end: number; text: string }[]>([])
   const [isProcessing, setIsProcessing] = useState(false)
+  const [whisperLoading, setWhisperLoading] = useState(false)
   const [title, setTitle] = useState('')
   const [showGemma, setShowGemma] = useState(false)
   const [savedId, setSavedId] = useState<number | null>(null)
 
-  // Load Gemma engine if enabled and not ready
+  useEffect(() => {
+    if (!whisper.isReady && !whisper.isLoading) {
+      setWhisperLoading(true)
+      whisper.load().finally(() => setWhisperLoading(false))
+    }
+  }, [])
+
   useEffect(() => {
     if (gemmaEnabled && !gemmaReady && !gemma.isLoaded && !gemma.isLoading) {
       gemma.load((p) => {
@@ -38,19 +45,28 @@ export default function Transcriber() {
     setSavedId(null)
     setShowGemma(false)
     try {
-      await whisper.load()
+      if (!whisper.isReady) {
+        setTranscript('Loading Whisper model, please wait...')
+        await whisper.load()
+      }
       const result = await whisper.transcribe(audio)
-      setTranscript(result.text)
+      const text = result.text || ''
+      if (text.length < 5) {
+        setTranscript('No clear speech detected. Try recording in a quieter environment or speak more clearly.')
+        setIsProcessing(false)
+        return
+      }
+      setTranscript(text)
       const segs = (result.chunks || []).map((c) => ({
         start: c.timestamp[0],
         end: c.timestamp[1],
         text: c.text,
       }))
       setSegments(segs)
-      const firstWords = result.text.slice(0, 50).replace(/\n/g, ' ')
+      const firstWords = text.slice(0, 50).replace(/\n/g, ' ')
       setTitle(firstWords.length > 50 ? firstWords + '...' : firstWords)
     } catch (e) {
-      setTranscript(`Error: ${e}`)
+      setTranscript(`Transcription failed: ${e}`)
     } finally {
       setIsProcessing(false)
     }
@@ -69,22 +85,35 @@ export default function Transcriber() {
 
   return (
     <div style={{ ...styles.container, fontSize: `${fontSize}px` }}>
-      <Recorder onAudioReady={handleAudioReady} isProcessing={isProcessing} />
+      {whisperLoading ? (
+        <div style={styles.loadingBox}>
+          <span style={styles.spinner} />
+          <span>Loading speech recognition...</span>
+        </div>
+      ) : (
+        <Recorder onAudioReady={handleAudioReady} isProcessing={isProcessing} />
+      )}
+
+      {whisper.error && (
+        <div style={styles.errorBox}>
+          Failed to load Whisper: {whisper.error}
+        </div>
+      )}
 
       {transcript && (
         <div style={styles.resultCard}>
           <div style={styles.resultHeader}>
             <span style={styles.badge}>📝 Transcript</span>
             <div style={styles.actions}>
-              <button onClick={() => exportTXT(transcript, title)} style={styles.actionBtn} title="Download TXT">
+              <button onClick={() => exportTXT(transcript, title || 'transcript')} style={styles.actionBtn}>
                 📄 TXT
               </button>
               {segments.length > 0 && (
-                <button onClick={() => exportSRT(segments, title)} style={styles.actionBtn} title="Download SRT">
+                <button onClick={() => exportSRT(segments, title || 'transcript')} style={styles.actionBtn}>
                   💬 SRT
                 </button>
               )}
-              <button onClick={handleSave} style={styles.actionBtn} title="Save to history">
+              <button onClick={handleSave} style={styles.actionBtn}>
                 💾 Save
               </button>
             </div>
@@ -94,7 +123,7 @@ export default function Transcriber() {
             {transcript}
           </div>
 
-          {gemmaEnabled && (
+          {gemmaEnabled && transcript.length > 5 && !transcript.startsWith('No clear') && (
             <button onClick={() => setShowGemma(!showGemma)} style={styles.aiBtn}>
               {showGemma ? '🤖 Hide AI' : '🤖 AI Summarize & Chat'}
             </button>
@@ -102,11 +131,8 @@ export default function Transcriber() {
         </div>
       )}
 
-      {showGemma && gemmaEnabled && transcript && (
-        <GemmaChat
-          transcript={transcript}
-          gemma={gemma}
-        />
+      {showGemma && gemmaEnabled && transcript && !transcript.startsWith('No clear') && (
+        <GemmaChat transcript={transcript} gemma={gemma} />
       )}
     </div>
   )
@@ -118,6 +144,32 @@ const styles: Record<string, React.CSSProperties> = {
     flexDirection: 'column',
     gap: '16px',
     lineHeight: 1.6,
+  },
+  loadingBox: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '8px',
+    padding: '24px',
+    color: 'var(--muted)',
+    fontSize: '14px',
+  },
+  spinner: {
+    width: '18px',
+    height: '18px',
+    border: '2px solid var(--border)',
+    borderTop: '2px solid var(--accent)',
+    borderRadius: '50%',
+    animation: 'spin 0.8s linear infinite',
+    display: 'inline-block',
+  },
+  errorBox: {
+    padding: '12px',
+    borderRadius: '8px',
+    background: 'rgba(239, 68, 68, 0.1)',
+    color: '#ef4444',
+    fontSize: '13px',
+    border: '1px solid rgba(239, 68, 68, 0.2)',
   },
   resultCard: {
     padding: '16px',
