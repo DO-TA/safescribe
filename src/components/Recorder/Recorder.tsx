@@ -34,15 +34,19 @@ export default function Recorder({ onAudioReady, isProcessing }: RecorderProps) 
     } catch {}
   }
 
+  const [decodeError, setDecodeError] = useState<string | null>(null)
+
   const handleFilePick = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
     setFileName(file.name)
+    setDecodeError(null)
     try {
       const audio = await blobToFloat32Array(file)
       onAudioReady(audio)
     } catch (err) {
-      console.error('File decode error', err)
+      const msg = err instanceof Error ? err.message : String(err)
+      setDecodeError(msg)
     }
   }
 
@@ -107,6 +111,9 @@ export default function Recorder({ onAudioReady, isProcessing }: RecorderProps) 
           </p>
           {fileName && (
             <p style={styles.fileName}>Selected: {fileName}</p>
+          )}
+          {decodeError && (
+            <p style={styles.error}>{decodeError}</p>
           )}
         </div>
       )}

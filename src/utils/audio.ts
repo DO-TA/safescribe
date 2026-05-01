@@ -4,6 +4,9 @@ function getAudioContext(): AudioContext {
   if (!audioCtx) {
     audioCtx = new AudioContext()
   }
+  if (audioCtx.state === 'suspended') {
+    audioCtx.resume()
+  }
   return audioCtx
 }
 
@@ -30,7 +33,11 @@ export async function blobToFloat32Array(blob: Blob): Promise<Float32Array> {
   try {
     audioBuffer = await ctx.decodeAudioData(arrayBuffer.slice(0))
   } catch {
-    audioBuffer = await ctx.decodeAudioData(arrayBuffer)
+    try {
+      audioBuffer = await ctx.decodeAudioData(arrayBuffer)
+    } catch (e) {
+      throw new Error(`Cannot decode audio file. Format may not be supported by your browser. Try WAV or MP3.`)
+    }
   }
   const channelData = audioBuffer.getChannelData(0)
   const mono = audioBuffer.numberOfChannels > 1
