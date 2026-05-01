@@ -9,10 +9,6 @@ function notifyListeners(ready: boolean) {
   for (const fn of globalListeners) fn(ready)
 }
 
-export function getWhisperStatus() {
-  return { isReady: globalPipeRef !== null }
-}
-
 export function useWhisper() {
   const pipeRef = useRef<Pipeline | null>(null)
   const [isReady, setIsReady] = useState(globalPipeRef !== null)
@@ -51,8 +47,22 @@ export function useWhisper() {
     const p = pipeRef.current || globalPipeRef
     if (!p) throw new Error('Whisper not loaded')
     const result = await p(audio, {
-      return_timestamps: true,
+      chunk_length_s: 30,
+      stride_length_s: 5,
       language: 'english',
+      return_timestamps: false,
+    })
+    return result as { text: string }
+  }, [])
+
+  const transcribeWithTimestamps = useCallback(async (audio: Float32Array) => {
+    const p = pipeRef.current || globalPipeRef
+    if (!p) throw new Error('Whisper not loaded')
+    const result = await p(audio, {
+      chunk_length_s: 30,
+      stride_length_s: 5,
+      language: 'english',
+      return_timestamps: true,
     })
     return result as { text: string; chunks?: { timestamp: [number, number]; text: string }[] }
   }, [])
@@ -64,5 +74,5 @@ export function useWhisper() {
     notifyListeners(false)
   }, [])
 
-  return { load, transcribe, unload, isReady, isLoading, error }
+  return { load, transcribe, transcribeWithTimestamps, unload, isReady, isLoading, error }
 }

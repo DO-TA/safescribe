@@ -57,12 +57,18 @@ export default function Transcriber() {
         return
       }
       setTranscript(text)
-      const segs = (result.chunks || []).map((c) => ({
-        start: c.timestamp[0],
-        end: c.timestamp[1],
-        text: c.text,
-      }))
-      setSegments(segs)
+      try {
+        const timedResult = await whisper.transcribeWithTimestamps(audio)
+        if (timedResult.chunks && timedResult.chunks.length > 0) {
+          setSegments(timedResult.chunks.map((c) => ({
+            start: c.timestamp[0],
+            end: c.timestamp[1],
+            text: c.text,
+          })))
+        }
+      } catch {
+        // timestamps are optional for SRT export
+      }
       const firstWords = text.slice(0, 50).replace(/\n/g, ' ')
       setTitle(firstWords.length > 50 ? firstWords + '...' : firstWords)
     } catch (e) {

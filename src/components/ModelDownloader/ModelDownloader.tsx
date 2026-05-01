@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useAppStore } from '../../stores/appStore'
 import { useModelDownloader } from '../../hooks/useModelDownloader'
 import { useWhisper } from '../../hooks/useWhisper'
@@ -8,28 +8,33 @@ export default function ModelDownloader() {
   const { setWhisperReady, setWhisperProgress, setGemmaEnabled, gemmaEnabled } = useAppStore()
   const whisper = useWhisper()
   const dl = useModelDownloader()
+  const [downloadError, setDownloadError] = useState<string | null>(null)
 
-  useEffect(() => {
-    if (!dl.whisperReady && dl.loaded) {
+  const startDownload = () => {
+    setDownloadError(null)
+    if (!dl.whisperReady) {
       whisper.load((p) => {
         dl.updateWhisper(p)
         setWhisperProgress(p)
-        if (p >= 100) {
-          dl.updateWhisper(100, true)
-          setWhisperReady(true)
-        }
       }).then(() => {
         dl.updateWhisper(100, true)
         setWhisperProgress(100)
         setWhisperReady(true)
-      }).catch(() => {})
+      }).catch((e) => {
+        setDownloadError(String(e))
+      })
+    }
+  }
+
+  useEffect(() => {
+    if (dl.loaded && !dl.whisperReady) {
+      startDownload()
     }
   }, [dl.loaded])
 
   const handleGemmaToggle = () => {
-    const v = !gemmaEnabled
-    setGemmaEnabled(v)
-    dl.toggleGemma(v)
+    setGemmaEnabled(!gemmaEnabled)
+    dl.toggleGemma(!gemmaEnabled)
   }
 
   return (
@@ -49,12 +54,23 @@ export default function ModelDownloader() {
             <div style={{ ...styles.barInner, width: `${dl.whisperProgress}%` }} />
           </div>
           <span style={styles.status}>
-            {whisper.isLoading
-              ? `Downloading... ${dl.whisperProgress}%`
-              : dl.whisperReady
-              ? '✅ Ready'
-              : 'Starting download...'}
+            {whisper.error || downloadError ? (
+              <span style={styles.errorText}>
+                ❌ Download failed. Check your internet connection.
+              </span>
+            ) : whisper.isLoading ? (
+              `Downloading... ${dl.whisperProgress}%`
+            ) : dl.whisperReady ? (
+              '✅ Ready'
+            ) : (
+              'Starting download...'
+            )}
           </span>
+          {(whisper.error || downloadError) && (
+            <button onClick={startDownload} style={styles.retryBtn}>
+              🔄 Retry Download
+            </button>
+          )}
         </div>
 
         <div style={styles.section}>
@@ -63,7 +79,7 @@ export default function ModelDownloader() {
             <span style={styles.size}>~1.2 GB</span>
           </div>
           <label style={styles.toggleRow}>
-            <span>Enable AI features</span>
+            <span>Enable AI features (optional)</span>
             <input
               type="checkbox"
               checked={gemmaEnabled}
@@ -91,7 +107,7 @@ export default function ModelDownloader() {
           <p style={styles.hint}>
             {gemmaEnabled && !dl.gemmaReady
               ? 'You can start transcribing while Gemma downloads in the background.'
-              : 'Tap continue to start transcribing.'}
+              : 'Ready to transcribe!'}
           </p>
         )}
       </div>
@@ -152,6 +168,7 @@ const styles: Record<string, React.CSSProperties> = {
     transition: 'width 0.3s',
   },
   status: { fontSize: '12px', color: 'var(--muted)' },
+  errorText: { color: '#ef4444' },
   toggleRow: {
     display: 'flex',
     justifyContent: 'space-between',
@@ -162,4 +179,14 @@ const styles: Record<string, React.CSSProperties> = {
   },
   toggle: { width: '20px', height: '20px', cursor: 'pointer' },
   hint: { fontSize: '12px', color: 'var(--muted)', textAlign: 'center', margin: 0 },
+  retryBtn: {
+    padding: '8px 16px',
+    borderRadius: '8px',
+    border: '1px solid var(--accent)',
+    background: 'transparent',
+    color: 'var(--accent)',
+    fontSize: '12px',
+    fontWeight: 600,
+    cursor: 'pointer',
+  },
 }
