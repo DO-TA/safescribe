@@ -1,40 +1,34 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useAppStore } from '../../stores/appStore'
-import { useModelDownloader } from '../../hooks/useModelDownloader'
 import { useWhisper } from '../../hooks/useWhisper'
 import PrivacyBadge from '../common/PrivacyBadge'
 
 export default function ModelDownloader() {
-  const { setWhisperReady, setWhisperProgress, setGemmaEnabled, gemmaEnabled } = useAppStore()
+  const { setWhisperReady, setWhisperProgress } = useAppStore()
   const whisper = useWhisper()
-  const dl = useModelDownloader()
+  const [progress, setProgress] = useState(0)
   const [downloadError, setDownloadError] = useState<string | null>(null)
+  const [hasStarted, setHasStarted] = useState(false)
 
-  const startDownload = () => {
+  const startDownload = async () => {
     setDownloadError(null)
-    if (!dl.whisperReady) {
-      whisper.load((p) => {
-        dl.updateWhisper(p)
+    setHasStarted(true)
+    try {
+      await whisper.load((p) => {
+        setProgress(p)
         setWhisperProgress(p)
-      }).then(() => {
-        dl.updateWhisper(100, true)
-        setWhisperProgress(100)
-        setWhisperReady(true)
-      }).catch((e) => {
-        setDownloadError(String(e))
       })
+      setProgress(100)
+      setWhisperProgress(100)
+      setWhisperReady(true)
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      setDownloadError(msg)
     }
   }
 
-  useEffect(() => {
-    if (dl.loaded && !dl.whisperReady) {
-      startDownload()
-    }
-  }, [dl.loaded])
-
-  const handleGemmaToggle = () => {
-    setGemmaEnabled(!gemmaEnabled)
-    dl.toggleGemma(!gemmaEnabled)
+  const handleSkip = () => {
+    setWhisperReady(true)
   }
 
   return (
@@ -50,30 +44,59 @@ export default function ModelDownloader() {
             <span>🎤 Speech Recognition (Whisper)</span>
             <span style={styles.size}>~75 MB</span>
           </div>
-          <div style={styles.barOuter}>
-            <div style={{ ...styles.barInner, width: `${dl.whisperProgress}%` }} />
-          </div>
-          <span style={styles.status}>
-            {whisper.error || downloadError ? (
-              <span style={styles.errorText}>
-                ❌ {whisper.error || downloadError}
+
+          {hasStarted && (
+            <>
+              <div style={styles.barOuter}>
+                <div style={{ ...styles.barInner, width: `${progress}%` }} />
+              </div>
+              <span style={styles.status}>
+                {downloadError ? (
+                  <span style={styles.errorText}>❌ {downloadError}</span>
+                ) : whisper.isLoading ? (
+                  <span>{whisper.statusText}</span>
+                ) : progress >= 100 ? (
+                  '✅ Ready'
+                ) : (
+                  'Starting...'
+                )}
               </span>
-            ) : whisper.isLoading ? (
-              <>
-                <span>{whisper.statusText}</span>
-                <span style={{ marginLeft: '4px' }}>{dl.whisperProgress}%</span>
-              </>
-            ) : dl.whisperReady ? (
-              '✅ Ready'
-            ) : (
-              'Starting download...'
-            )}
-          </span>
-          {(whisper.error || downloadError) && (
-            <button onClick={startDownload} style={styles.retryBtn}>
-              🔄 Retry Download
-            </button>
+            </>
           )}
+
+          {downloadError && (
+            <div style={styles.errorBox}>
+              <p style={{ margin: '0 0 8px 0', fontSize: '12px' }}>
+                The model failed to load. This usually happens because:
+              </p>
+              <ul style={{ margin: 0, paddingLeft: '16px', fontSize: '11px' }}>
+                <li>Your browser blocks large downloads (Brave, Safari)</li>
+                <li>You're on a slow connection</li>
+                <li>Your device doesn't support WebAssembly</li>
+              </ul>
+            </div>
+          )}
+
+          <div style={styles.buttonRow}>
+            {!hasStarted ? (
+              <button onClick={startDownload} style={styles.primaryBtn}>
+                📥 Download Model
+              </button>
+            ) : downloadError ? (
+              <>
+                <button onClick={startDownload} style={styles.primaryBtn}>
+                  🔄 Retry
+                </button>
+                <button onClick={handleSkip} style={styles.secondaryBtn}>
+                  ⏭️ Skip for now
+                </button>
+              </>
+            ) : whisper.isLoading ? (
+              <button onClick={handleSkip} style={styles.secondaryBtn}>
+                ⏭️ Skip for now
+              </button>
+            ) : null}
+          </div>
         </div>
 
         <div style={styles.section}>
@@ -81,38 +104,14 @@ export default function ModelDownloader() {
             <span>🤖 AI Summarization (Gemma 2B)</span>
             <span style={styles.size}>~1.2 GB</span>
           </div>
-          <label style={styles.toggleRow}>
-            <span>Enable AI features (optional)</span>
-            <input
-              type="checkbox"
-              checked={gemmaEnabled}
-              onChange={handleGemmaToggle}
-              style={styles.toggle}
-            />
-          </label>
-          {gemmaEnabled && (
-            <>
-              <div style={styles.barOuter}>
-                <div style={{ ...styles.barInner, width: `${dl.gemmaProgress}%` }} />
-              </div>
-              <span style={styles.status}>
-                {dl.gemmaProgress > 0 && dl.gemmaProgress < 100
-                  ? `Downloading... ${dl.gemmaProgress}%`
-                  : dl.gemmaReady
-                  ? '✅ Ready'
-                  : 'Download will start automatically'}
-              </span>
-            </>
-          )}
+          <p style={styles.hint}>
+            Optional. You can enable this later in Settings after Whisper is downloaded.
+          </p>
         </div>
 
-        {dl.whisperReady && (
-          <p style={styles.hint}>
-            {gemmaEnabled && !dl.gemmaReady
-              ? 'You can start transcribing while Gemma downloads in the background.'
-              : 'Ready to transcribe!'}
-          </p>
-        )}
+        <p style={styles.footer}>
+          💡 Tip: The model downloads once and works offline forever.
+        </p>
       </div>
     </div>
   )
@@ -146,7 +145,7 @@ const styles: Record<string, React.CSSProperties> = {
     width: '100%',
     display: 'flex',
     flexDirection: 'column',
-    gap: '6px',
+    gap: '8px',
     padding: '12px 0',
   },
   row: {
@@ -172,24 +171,51 @@ const styles: Record<string, React.CSSProperties> = {
   },
   status: { fontSize: '12px', color: 'var(--muted)' },
   errorText: { color: '#ef4444' },
-  toggleRow: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    fontSize: '13px',
-    color: 'var(--text)',
-    cursor: 'pointer',
-  },
-  toggle: { width: '20px', height: '20px', cursor: 'pointer' },
-  hint: { fontSize: '12px', color: 'var(--muted)', textAlign: 'center', margin: 0 },
-  retryBtn: {
-    padding: '8px 16px',
+  errorBox: {
+    padding: '10px',
     borderRadius: '8px',
-    border: '1px solid var(--accent)',
-    background: 'transparent',
-    color: 'var(--accent)',
-    fontSize: '12px',
+    background: 'rgba(239, 68, 68, 0.05)',
+    border: '1px solid rgba(239, 68, 68, 0.2)',
+    color: 'var(--text)',
+  },
+  buttonRow: {
+    display: 'flex',
+    gap: '8px',
+    flexWrap: 'wrap',
+  },
+  primaryBtn: {
+    flex: 1,
+    padding: '12px',
+    borderRadius: '10px',
+    border: 'none',
+    background: 'var(--accent)',
+    color: '#fff',
+    fontSize: '14px',
     fontWeight: 600,
     cursor: 'pointer',
+    minWidth: '140px',
+  },
+  secondaryBtn: {
+    flex: 1,
+    padding: '12px',
+    borderRadius: '10px',
+    border: '1px solid var(--border)',
+    background: 'var(--bg)',
+    color: 'var(--text)',
+    fontSize: '14px',
+    fontWeight: 500,
+    cursor: 'pointer',
+    minWidth: '140px',
+  },
+  hint: {
+    fontSize: '12px',
+    color: 'var(--muted)',
+    margin: 0,
+  },
+  footer: {
+    fontSize: '11px',
+    color: 'var(--muted)',
+    textAlign: 'center',
+    margin: 0,
   },
 }

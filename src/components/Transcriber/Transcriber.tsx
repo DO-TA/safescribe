@@ -16,17 +16,9 @@ export default function Transcriber() {
   const [transcript, setTranscript] = useState('')
   const [segments, setSegments] = useState<{ start: number; end: number; text: string }[]>([])
   const [isProcessing, setIsProcessing] = useState(false)
-  const [whisperLoading, setWhisperLoading] = useState(false)
   const [title, setTitle] = useState('')
   const [showGemma, setShowGemma] = useState(false)
   const [savedId, setSavedId] = useState<number | null>(null)
-
-  useEffect(() => {
-    if (!whisper.isReady && !whisper.isLoading) {
-      setWhisperLoading(true)
-      whisper.load().finally(() => setWhisperLoading(false))
-    }
-  }, [])
 
   useEffect(() => {
     if (gemmaEnabled && !gemmaReady && !gemma.isLoaded && !gemma.isLoading) {
@@ -46,28 +38,27 @@ export default function Transcriber() {
     setShowGemma(false)
     try {
       if (!whisper.isReady) {
-        setTranscript('Loading Whisper model, please wait...')
+        setTranscript('Loading speech recognition model...')
         await whisper.load()
       }
-      const result = await whisper.transcribeWithTimestamps(audio)
+      const result = await whisper.transcribe(audio)
       const text = result.text || ''
       if (text.length < 5) {
-        setTranscript('No clear speech detected. Try recording in a quieter environment or speak more clearly.')
+        setTranscript('No clear speech detected. Try speaking more clearly or reducing background noise.')
         setIsProcessing(false)
         return
       }
       setTranscript(text)
-      if (result.chunks.length > 0) {
-        setSegments(result.chunks.map((c) => ({
-          start: c.timestamp[0],
-          end: c.timestamp[1],
-          text: c.text,
-        })))
-      }
+      const segs = (result.chunks || []).map((c) => ({
+        start: c.timestamp[0],
+        end: c.timestamp[1],
+        text: c.text,
+      }))
+      setSegments(segs)
       const firstWords = text.slice(0, 50).replace(/\n/g, ' ')
       setTitle(firstWords.length > 50 ? firstWords + '...' : firstWords)
     } catch (e) {
-      setTranscript(`Transcription failed: ${e}`)
+      setTranscript(`Error: ${e}`)
     } finally {
       setIsProcessing(false)
     }
@@ -86,20 +77,7 @@ export default function Transcriber() {
 
   return (
     <div style={{ ...styles.container, fontSize: `${fontSize}px` }}>
-      {whisperLoading ? (
-        <div style={styles.loadingBox}>
-          <span style={styles.spinner} />
-          <span>Loading speech recognition...</span>
-        </div>
-      ) : (
-        <Recorder onAudioReady={handleAudioReady} isProcessing={isProcessing} />
-      )}
-
-      {whisper.error && (
-        <div style={styles.errorBox}>
-          Failed to load Whisper: {whisper.error}
-        </div>
-      )}
+      <Recorder onAudioReady={handleAudioReady} isProcessing={isProcessing} />
 
       {transcript && (
         <div style={styles.resultCard}>
@@ -124,7 +102,7 @@ export default function Transcriber() {
             {transcript}
           </div>
 
-          {gemmaEnabled && transcript.length > 5 && !transcript.startsWith('No clear') && (
+          {gemmaEnabled && transcript.length > 5 && !transcript.startsWith('No clear') && !transcript.startsWith('Loading') && !transcript.startsWith('Error') && (
             <button onClick={() => setShowGemma(!showGemma)} style={styles.aiBtn}>
               {showGemma ? '🤖 Hide AI' : '🤖 AI Summarize & Chat'}
             </button>
@@ -132,7 +110,7 @@ export default function Transcriber() {
         </div>
       )}
 
-      {showGemma && gemmaEnabled && transcript && !transcript.startsWith('No clear') && (
+      {showGemma && gemmaEnabled && transcript && !transcript.startsWith('No clear') && !transcript.startsWith('Loading') && !transcript.startsWith('Error') && (
         <GemmaChat transcript={transcript} gemma={gemma} />
       )}
     </div>
@@ -145,32 +123,6 @@ const styles: Record<string, React.CSSProperties> = {
     flexDirection: 'column',
     gap: '16px',
     lineHeight: 1.6,
-  },
-  loadingBox: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: '8px',
-    padding: '24px',
-    color: 'var(--muted)',
-    fontSize: '14px',
-  },
-  spinner: {
-    width: '18px',
-    height: '18px',
-    border: '2px solid var(--border)',
-    borderTop: '2px solid var(--accent)',
-    borderRadius: '50%',
-    animation: 'spin 0.8s linear infinite',
-    display: 'inline-block',
-  },
-  errorBox: {
-    padding: '12px',
-    borderRadius: '8px',
-    background: 'rgba(239, 68, 68, 0.1)',
-    color: '#ef4444',
-    fontSize: '13px',
-    border: '1px solid rgba(239, 68, 68, 0.2)',
   },
   resultCard: {
     padding: '16px',
