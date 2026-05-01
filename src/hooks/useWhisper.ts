@@ -9,6 +9,14 @@ function notifyListeners(ready: boolean) {
   for (const fn of globalListeners) fn(ready)
 }
 
+function safeProgress(raw: unknown): number {
+  if (raw == null) return 0
+  const num = Number(raw)
+  if (!isFinite(num) || num <= 0) return 0
+  if (num > 1) return Math.min(100, Math.round(num))
+  return Math.min(100, Math.round(num * 100))
+}
+
 export function useWhisper() {
   const pipeRef = useRef<Pipeline | null>(null)
   const [isReady, setIsReady] = useState(globalPipeRef !== null)
@@ -24,18 +32,28 @@ export function useWhisper() {
     if (pipeRef.current) return
     setIsLoading(true)
     setError(null)
+
+    const timeout = setTimeout(() => {
+      if (!globalPipeRef) {
+        setError('Download timed out. Check your internet connection and try again.')
+        setIsLoading(false)
+      }
+    }, 120000)
+
     try {
       globalPipeRef = await pipeline('automatic-speech-recognition', WHISPER_MODEL, {
-        progress_callback: (progress: { status?: string; progress?: number }) => {
-          if (progress.progress != null && onProgress) {
-            onProgress(Math.round(progress.progress * 100))
+        progress_callback: (progress: Record<string, unknown>) => {
+          if (onProgress && progress != null) {
+            onProgress(safeProgress(progress.progress))
           }
         },
       })
+      clearTimeout(timeout)
       pipeRef.current = globalPipeRef
       setIsReady(true)
       notifyListeners(true)
     } catch (e) {
+      clearTimeout(timeout)
       const msg = String(e)
       setError(msg)
     } finally {
@@ -55,16 +73,16 @@ export function useWhisper() {
     return result as { text: string }
   }, [])
 
-  const transcribeWithTimestamps = useCallback(async (audio: Float32Array) => {
+  const transcribeWithTimestamps = useCallback(async (audio: Float32Array): Promise<{ text: string; chunks: { timestamp: [number, number]; text: string }[] }> => {
     const p = pipeRef.current || globalPipeRef
-    if (!p) throw new Error('Whisper not loaded')
+    if (!p) return { text: '', chunks: [] }
     const result = await p(audio, {
       chunk_length_s: 30,
       stride_length_s: 5,
       language: 'english',
       return_timestamps: true,
-    })
-    return result as { text: string; chunks?: { timestamp: [number, number]; text: string }[] }
+    }) as { text: string; chunks?: { timestamp: [number, number]; text: string }[] }
+    return { text: result.text, chunks: result.chunks || [] }
   }, [])
 
   const unload = useCallback(() => {

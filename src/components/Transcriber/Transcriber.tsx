@@ -49,7 +49,7 @@ export default function Transcriber() {
         setTranscript('Loading Whisper model, please wait...')
         await whisper.load()
       }
-      const result = await whisper.transcribe(audio)
+      const result = await whisper.transcribeWithTimestamps(audio)
       const text = result.text || ''
       if (text.length < 5) {
         setTranscript('No clear speech detected. Try recording in a quieter environment or speak more clearly.')
@@ -57,17 +57,12 @@ export default function Transcriber() {
         return
       }
       setTranscript(text)
-      try {
-        const timedResult = await whisper.transcribeWithTimestamps(audio)
-        if (timedResult.chunks && timedResult.chunks.length > 0) {
-          setSegments(timedResult.chunks.map((c) => ({
-            start: c.timestamp[0],
-            end: c.timestamp[1],
-            text: c.text,
-          })))
-        }
-      } catch {
-        // timestamps are optional for SRT export
+      if (result.chunks.length > 0) {
+        setSegments(result.chunks.map((c) => ({
+          start: c.timestamp[0],
+          end: c.timestamp[1],
+          text: c.text,
+        })))
       }
       const firstWords = text.slice(0, 50).replace(/\n/g, ' ')
       setTitle(firstWords.length > 50 ? firstWords + '...' : firstWords)
