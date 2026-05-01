@@ -1,13 +1,17 @@
 import { useState, useEffect } from 'react'
+import { useAppStore } from '../../stores/appStore'
 import { useTranscriptHistory } from '../../hooks/useTranscriptHistory'
 
 export default function HistoryView() {
+  const { activeTab } = useAppStore()
   const { items, loaded, search, remove, refresh } = useTranscriptHistory()
   const [query, setQuery] = useState('')
 
   useEffect(() => {
-    refresh()
-  }, [])
+    if (activeTab === 'history') {
+      refresh()
+    }
+  }, [activeTab])
 
   const handleSearch = (q: string) => {
     setQuery(q)

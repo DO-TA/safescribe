@@ -51,7 +51,14 @@ export default function Transcriber() {
       }
       setTranscript(text)
       const firstWords = text.slice(0, 50).replace(/\n/g, ' ')
-      setTitle(firstWords.length > 50 ? firstWords + '...' : firstWords)
+      const newTitle = firstWords.length > 50 ? firstWords + '...' : firstWords
+      setTitle(newTitle)
+      // Auto-save
+      await save({
+        title: newTitle || 'Untitled',
+        text,
+        createdAt: Date.now(),
+      })
     } catch (e) {
       setTranscript(`Error: ${e}`)
     } finally {
