@@ -4,7 +4,7 @@ import Recorder from '../Recorder/Recorder'
 import { useWhisper } from '../../hooks/useWhisper'
 import { useGemma } from '../../hooks/useGemma'
 import { useTranscriptHistory } from '../../hooks/useTranscriptHistory'
-import { exportTXT, exportSRT } from '../../utils/export'
+import { exportTXT } from '../../utils/export'
 import GemmaChat from '../GemmaChat/GemmaChat'
 
 export default function Transcriber() {
@@ -14,11 +14,11 @@ export default function Transcriber() {
   const { save } = useTranscriptHistory()
 
   const [transcript, setTranscript] = useState('')
-  const [segments, setSegments] = useState<{ start: number; end: number; text: string }[]>([])
   const [isProcessing, setIsProcessing] = useState(false)
   const [title, setTitle] = useState('')
   const [showGemma, setShowGemma] = useState(false)
   const [savedId, setSavedId] = useState<number | null>(null)
+  const [wasTruncated, setWasTruncated] = useState(false)
 
   useEffect(() => {
     if (gemmaEnabled && !gemmaReady && !gemma.isLoaded && !gemma.isLoading) {
@@ -32,10 +32,10 @@ export default function Transcriber() {
   const handleAudioReady = async (audio: Float32Array) => {
     setIsProcessing(true)
     setTranscript('')
-    setSegments([])
     setTitle('')
     setSavedId(null)
     setShowGemma(false)
+    setWasTruncated(false)
     try {
       if (!whisper.isReady) {
         setTranscript('Loading speech recognition model...')
@@ -43,18 +43,13 @@ export default function Transcriber() {
       }
       const result = await whisper.transcribe(audio)
       const text = result.text || ''
+      setWasTruncated(result.wasTruncated)
       if (text.length < 5) {
         setTranscript('No clear speech detected. Try speaking more clearly or reducing background noise.')
         setIsProcessing(false)
         return
       }
       setTranscript(text)
-      const segs = (result.chunks || []).map((c) => ({
-        start: c.timestamp[0],
-        end: c.timestamp[1],
-        text: c.text,
-      }))
-      setSegments(segs)
       const firstWords = text.slice(0, 50).replace(/\n/g, ' ')
       setTitle(firstWords.length > 50 ? firstWords + '...' : firstWords)
     } catch (e) {
@@ -69,7 +64,6 @@ export default function Transcriber() {
     const id = await save({
       title: title || 'Untitled',
       text: transcript,
-      segments: segments.length > 0 ? segments : undefined,
       createdAt: Date.now(),
     })
     setSavedId(id as number)
@@ -87,17 +81,17 @@ export default function Transcriber() {
               <button onClick={() => exportTXT(transcript, title || 'transcript')} style={styles.actionBtn}>
                 📄 TXT
               </button>
-              {segments.length > 0 && (
-                <button onClick={() => exportSRT(segments, title || 'transcript')} style={styles.actionBtn}>
-                  💬 SRT
-                </button>
-              )}
               <button onClick={handleSave} style={styles.actionBtn}>
                 💾 Save
               </button>
             </div>
           </div>
           {savedId && <p style={styles.savedNote}>✅ Saved to history</p>}
+          {wasTruncated && (
+            <p style={styles.truncatedNote}>
+              ⚠️ Audio was longer than 30 seconds. Only the first 30 seconds were transcribed.
+            </p>
+          )}
           <div style={styles.transcriptText}>
             {transcript}
           </div>
@@ -163,6 +157,15 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: '12px',
     color: '#22c55e',
     margin: 0,
+  },
+  truncatedNote: {
+    fontSize: '12px',
+    color: '#f59e0b',
+    margin: 0,
+    padding: '8px',
+    background: 'rgba(245, 158, 11, 0.1)',
+    borderRadius: '6px',
+    border: '1px solid rgba(245, 158, 11, 0.2)',
   },
   transcriptText: {
     fontSize: '1em',

@@ -18,6 +18,8 @@ function safeProgress(raw: unknown): number {
   return Math.min(100, Math.round(num))
 }
 
+const MAX_SAMPLES = 30 * 16000 // 30 seconds at 16kHz
+
 export function useWhisper() {
   const pipeRef = useRef<Pipeline | null>(null)
   const [isReady, setIsReady] = useState(globalPipeRef !== null)
@@ -62,16 +64,23 @@ export function useWhisper() {
     }
   }, [isLoading])
 
-  const transcribe = useCallback(async (audio: Float32Array) => {
+  const transcribe = useCallback(async (audio: Float32Array): Promise<{ text: string; wasTruncated: boolean }> => {
     const p = pipeRef.current || globalPipeRef
     if (!p) throw new Error('Whisper not loaded')
-    const result = await p(audio, {
-      chunk_length_s: 30,
-      stride_length_s: 5,
+
+    // Whisper has a 30-second context window
+    const wasTruncated = audio.length > MAX_SAMPLES
+    const audioToProcess = wasTruncated ? audio.slice(0, MAX_SAMPLES) : audio
+
+    const result = await p(audioToProcess, {
       language: 'english',
-      return_timestamps: true,
+      return_timestamps: false,
     })
-    return result as { text: string; chunks?: { timestamp: [number, number]; text: string }[] }
+
+    return {
+      text: (result as { text: string }).text || '',
+      wasTruncated,
+    }
   }, [])
 
   const unload = useCallback(() => {
